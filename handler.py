@@ -25,6 +25,7 @@ ANTHROPIC_MODEL   = "claude-sonnet-4-6"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 RH_AUTH_TOKEN     = os.environ.get("RH_AUTH_TOKEN")      # OAuth token from local auth step
 RH_ACCOUNT_NUMBER = os.environ.get("RH_ACCOUNT_NUMBER")  # Your Agentic account number
+NOTIFY_EMAIL      = os.environ.get("NOTIFY_EMAIL", "vmassi10@gmail.com")
 
 
 # ── MCP Client ────────────────────────────────────────────────────────────────
@@ -297,6 +298,74 @@ Return ONLY valid JSON:
     }
 
 
+# ── Email Summary ─────────────────────────────────────────────────────────────
+
+def send_summary_email(result: dict, error: str = None):
+    """Send a trade summary email via SES after each agent run."""
+    ses = boto3.client("ses", region_name="us-east-1")
+    date = datetime.utcnow().strftime("%A, %B %d %Y")
+
+    if error:
+        subject = f"🔴 Robinhood Agent — Run Failed {datetime.utcnow().strftime('%Y-%m-%d')}"
+        body = f"The trading agent encountered a fatal error:\n\n{error}\n\nCheck CloudWatch logs for details."
+    else:
+        trades = result.get("trades_made", [])
+        trade_count = result.get("trade_count", 0)
+        summary = result.get("agent_summary", "No summary available.")
+
+        # Build trades section
+        if trades:
+            trade_lines = []
+            for t in trades:
+                inp = t.get("input", {})
+                res = t.get("result", {})
+                side = inp.get("side", "?").upper()
+                symbol = inp.get("symbol", "?")
+                qty = inp.get("quantity", "?")
+                order_type = inp.get("type", inp.get("order_type", "?"))
+                limit = inp.get("limit_price", "market")
+                filled_price = res.get("average_price") or res.get("price") if res else None
+                status = res.get("state", "pending") if res else "unknown"
+                line = f"  • {side} {qty} {symbol} @ {filled_price or limit} ({order_type}) — {status}"
+                trade_lines.append(line)
+            trades_section = "\n".join(trade_lines)
+        else:
+            trades_section = "  No trades placed this run."
+
+        subject = f"📈 Robinhood Agent — {trade_count} trade(s) placed — {date}"
+        body = f"""Daily Trading Agent Summary
+===========================
+Date: {date}
+Trades placed: {trade_count}
+
+TRADES
+------
+{trades_section}
+
+AGENT REASONING
+---------------
+{summary}
+
+STATS
+-----
+Agent iterations: {result.get('iterations', '?')}
+Run timestamp: {result.get('timestamp', '?')} UTC
+"""
+
+    try:
+        ses.send_email(
+            Source=NOTIFY_EMAIL,
+            Destination={"ToAddresses": [NOTIFY_EMAIL]},
+            Message={
+                "Subject": {"Data": subject},
+                "Body": {"Text": {"Data": body}},
+            },
+        )
+        print(f"[email] Summary sent to {NOTIFY_EMAIL}")
+    except Exception as e:
+        print(f"[email] Failed to send summary email: {e}")
+
+
 # ── Lambda Entrypoint ─────────────────────────────────────────────────────────
 
 def lambda_handler(event: dict, context) -> dict:
@@ -341,6 +410,8 @@ def lambda_handler(event: dict, context) -> dict:
         print(f"[handler] Done. Trades made: {result['trade_count']}")
         print(f"[handler] Summary: {result['agent_summary'][:500]}")
 
+        send_summary_email(result)
+
         return {
             "statusCode": 200,
             "body": json.dumps(result, indent=2),
@@ -348,6 +419,7 @@ def lambda_handler(event: dict, context) -> dict:
 
     except Exception as e:
         print(f"[handler] FATAL: {e}")
+        send_summary_email({}, error=str(e))
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e)}),
