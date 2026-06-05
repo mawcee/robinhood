@@ -196,7 +196,7 @@ Return ONLY valid JSON:
                 response = client.messages.create(
                     model=ANTHROPIC_MODEL,
                     max_tokens=4096,
-                    system=system,
+                    system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
                     tools=anthropic_tools,
                     messages=messages,
                 )
