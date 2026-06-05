@@ -17,7 +17,7 @@ provider "aws" {
 
 variable "aws_region"       { default = "us-east-1" }
 variable "function_name"    { default = "robinhood-trading-agent" }
-variable "daily_prompt"     { default = "Check market conditions and make one conservative equity trade aligned with my portfolio goals." }
+variable "daily_prompt"     { default = "Audit my current positions, sell anything that is no longer the best use of capital, and deploy all available settled cash into today's single strongest opportunity." }
 
 # ── IAM Role for Lambda ───────────────────────────────────────────────────────
 
