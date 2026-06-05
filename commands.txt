@@ -1,0 +1,36 @@
+COMMANDS USED
+=============
+
+# Deploy Lambda function
+./deploy.sh robinhood-trading-agent us-east-1
+
+# Update Lambda timeout (run after deploy)
+aws lambda update-function-configuration \
+  --function-name robinhood-trading-agent \
+  --region us-east-1 \
+  --timeout 900
+
+# Set Lambda environment variables
+aws lambda update-function-configuration \
+  --function-name robinhood-trading-agent \
+  --region us-east-1 \
+  --environment "Variables={
+    ANTHROPIC_API_KEY=<your-key>,
+    RH_AUTH_TOKEN=<your-token>,
+    RH_ACCOUNT_NUMBER=543519391,
+    INITIAL_CAPITAL=50
+  }"
+
+# Manually invoke the Lambda (trigger a trade)
+aws lambda invoke \
+  --function-name robinhood-trading-agent \
+  --region us-east-1 \
+  --payload '{"prompt": "Check my portfolio and make at least one trade based on current market conditions."}' \
+  --cli-binary-format raw-in-base64-out \
+  output.json && cat output.json
+
+# Check EventBridge schedule
+aws events list-rules --region us-east-1
+
+# View Lambda logs (CloudWatch)
+aws logs tail /aws/lambda/robinhood-trading-agent --follow --region us-east-1
